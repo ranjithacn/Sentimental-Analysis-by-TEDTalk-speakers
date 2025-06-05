@@ -21,8 +21,8 @@ tidyr
 ## How to run the project
 1.Clone the repository:
 ```bash
-git clone https://github.com/yourusername/ted-talks-analysis.git
-cd ted-talks-analysis
+git clone https://github.com/ranjithacn/Sentimental-Analysis-by-TEDTalk-speakers.git
+cd Sentimental-Analysis-by-TEDTalk-speakers
 ```
 2.Open analysis.R in Rstudio or any R enviornment
 3.Run the script:
