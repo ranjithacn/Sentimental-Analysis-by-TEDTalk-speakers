@@ -1,0 +1,246 @@
+---
+title: "MA331-Report: 2212188"
+subtitle: "TED Talks by Speaker Dong Woo Jang and Speaker Stephen Hawking"
+author: "Channagiri Nagaraja, Ranjitha"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+### Don't delete this setup code chunk from your file
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, comment = NULL)   ## DON'T ALTER THIS: this is to prevent printing the code or any unnecessary addition in your final "html" report file.
+
+# You can extend this list below to load all the packages required for your analyses:
+#====================================================================================
+# load the data
+library(dsEssex)    #load the dsEssex package
+library(tidyverse)  #load the tidyverse package
+library(tidytext)   #load the tidytext package
+library(dplyr)      #load the dplyr package
+library(ggplot2)    #load the ggplot2 package
+library(ggrepel)    #load the ggrepel package
+library(tidyr)      #load the tidyr package
+
+# load the 'ted_talks' data
+#=========================
+data(ted_talks)
+
+load(file = "ted_talks.rda")
+
+#display few rows
+head(ted_talks)
+
+#tidying and Tokenisation
+#unnest_tokens tokenizes the individual words and creates a new row from ted_talks dataset and stores it in variable tidy_talks 
+tidy_talks <- ted_talks %>% 
+  unnest_tokens(word, text)  
+
+#Stopwords removal
+#anti_join() function removes stop words from tidy_talks and stores it in Mydata
+Mydata <- tidy_talks %>% 
+  anti_join(get_stopwords())
+
+
+#Identification of top words for Dong_Woo_Jang speaker
+Jang_words <- Mydata %>%
+  #filters only rows of speaker of Dong Woo Jang
+  filter(speaker == "Dong Woo Jang") %>% 
+  #counts the frequency of words in Jang's talks, sort = TRUE describes descending order
+  dplyr::count(speaker, word, sort = TRUE) 
+
+#Visualisation of top words
+Jang_ggplot <- Jang_words %>%
+  #slice_max is used to keep top words, "n" specifies new column which holds top 25 rows         
+  dplyr::slice_max(n,n=25) %>%
+  #mutate is used to reorder words by frequency count using the 'reorder()' ,that takes two arguments 'word' and 'n'
+  dplyr::mutate(word = reorder(word,n)) %>%
+  #This creates new plot with 'n' as xx-axis and 'word' as y-axis
+  #geom_col() creates the bar chart and ggtitle() adds title
+  ggplot2::ggplot(aes(n, word)) + ggplot2::geom_col() + ggtitle("Dong Woo Jang")
+
+
+#identification of top words for Hawking
+Hawking_words <- Mydata %>%
+  #filtering speaker 'stephen Hawking'
+  filter(speaker == "Stephen Hawking") %>%
+  #counts the frequency of each unique word 
+  dplyr::count(speaker, word, sort = TRUE)
+
+
+#Visualisation of top words
+Hawking_ggplot <- Hawking_words %>%
+  #slice_max is used to keep top words, 'n' specifies new column which holds top 25 rows
+  dplyr::slice_max(n, n=25) %>%
+  #mutate is used to reorder words by frequency count using the 'reorder()' ,that takes two arguments 'word' and 'n'
+  dplyr::mutate(word = reorder(word, n)) %>%
+  #This creates new plot with 'n' as xx-axis and 'word' as y-axis
+  #geom_col() creates the bar chart and ggtitle() adds title
+  ggplot2::ggplot(aes(n, word)) + ggplot2::geom_col() + ggtitle("Stephen Hawking")
+
+
+#comparison between two speaker
+Comparing <-dplyr::bind_rows(Jang_words, Hawking_words) %>%
+  #group all data frame by the word
+  group_by(word) %>%
+  #filter() function keeps only rows where sum of frequency counts for word is greater than 10
+  filter(sum(n) > 10) %>%
+  #ungroup()  removes the grouping so that data frame can be in wide for mat
+  ungroup() %>%
+  #pivots the data frame in wide format
+  pivot_wider(names_from = "speaker", values_from = "n", values_fill = 0) %>%
+  #creates a new plot where x-axis is speaker 1 and y-axis is speaker 2
+  ggplot(aes("Dong Woo Jang", "Stephen Hawking")) +
+  #geom_abline() adds diagonal reference line
+  geom_abline(color = "Blue", size = 1.5, alpha = 1, lty = 3)+
+  #adds the text label of each word with the label argument specifying the column 'word'
+  geom_text_repel(aes(label=word), max.overlaps = 15)+
+  #fixes the aspect ratio of the plot
+  coord_fixed()
+
+#odds ratio and sentimental analysis
+Jang_analysis <- Jang_words %>%
+  #used to join each data frame
+  inner_join(get_sentiments("bing"))
+Hawking_analysis <- Hawking_words %>%
+  inner_join(get_sentiments("bing"))
+
+
+#bind_rows() used to combine the rows of two data frames
+#mutate() adds a new column 'person' to each data frame
+data1 <- bind_rows(Jang_words %>% mutate(person = "Jang"),
+                   Hawking_words %>% mutate(person = "Hawking"))
+
+
+#count the sentiments per person and displaying in wide format
+senti_wider <- data1 %>%
+  #data1 is joined with bing sentiment lexicon using inner_join()
+  inner_join(get_sentiments("bing")) %>%
+  #counts the number of occurrences of each sentiment for each speaker
+  count(person, sentiment) %>%
+  #the result is transformed from long format to a wide
+  pivot_wider(names_from = person, values_from = n, values_fill = 0) %>%
+  #odds ratio and log odds ratio are computed using dsEssex:::compute_OR()
+  mutate(OR = dsEssex:::compute_OR(Jang, Hawking, correction = FALSE), log_OR=log(OR),
+ #reorder() is rearranged by log odds ratio        
+sentiment = reorder(sentiment, log_OR)) %>%
+  #a plot is created using ggplot() 
+  ggplot(aes(sentiment, log_OR, fill = log_OR < 0)) +
+  #geom_col() is used to create a bar plot
+  geom_col(show.legend = FALSE) +
+  #yaxis is labeled
+  ylab("Log odds ratio") +
+  #title will be 'sentimental analysis'
+  ggtitle("Sentimental analysis") +
+  coord_flip() +
+  #the color of the bars is set to 'darkgreen' and 'red'
+  scale_fill_manual(name = "", values = c("darkgreen","red"))
+
+#jang_analysis is grouped by sentiment
+Top_Jang_words <- Jang_analysis %>%
+  group_by(sentiment) %>%
+  #slice_max is used to select top 10 words
+  slice_max(n, n=10) %>%
+  mutate(word = reorder(word,n)) %>%
+  #returns all the data to non-grouped
+  ungroup()
+
+#creates a bar plot of top 10 words used by Dong Woo Jang with 'n' as x-axis and 'word' as y-axis
+PN_Jang_Words <- ggplot(Top_Jang_words, aes(n,word, fill = sentiment)) +
+  #geom_col() represents height of the bar
+  geom_col(show.legend = FALSE) +
+  #facet_wrap() separates panel for each sentiment ,scales ensures that the scales of the y-axis are free
+  facet_wrap(~sentiment, scales = "free") +
+  #title will be 'Dong Woo Jang'
+  ggtitle("Dong Woo Jang")
+
+#Hawking_analysis is grouoed by sentiment
+Top_Hawking_words <- Hawking_analysis %>%
+  group_by(sentiment) %>%
+  #slice_max selects top 10 words
+  slice_max(n,n=10) %>%
+  mutate(word = reorder(word,n)) %>%
+  #returns all the data to non-grouped
+  ungroup()
+
+#creates a bar plot of top 10 words used by Stephen Hawking with 'n' as x-axis
+PN_Hawking_words <- ggplot(Top_Hawking_words, aes(n, word, fill= sentiment)) +
+  #geom_col() represents height of the bar
+  geom_col(show.legend = FALSE) +
+  #facet_wrap() separates panel for each sentiment, scales ensures that the scales of the y-axis are free
+  facet_wrap(~sentiment, scales = "free") +
+  #title will be 'Stephen Hawking'
+  ggtitle("Stephen Hawking")
+
+```
+
+## Introduction
+
+  My first speaker Dong Woo Jang who turns a stick of bamboo into an archer's bow. He spent the first three years developing a habitat for spiders in his room while studying their anatomy and hunting techniques.He gave the speech in the year of 2013.
+  My second speaker Stephen Hawking a popular well-known physicist and cosmologist frequently discusses subjects connected to his study, such as black holes, the beginnings of the cosmos, and the origin of the universe.The talk was given by Stephen Hawking in April 2008.
+
+## Methods
+
+This R code is intended to examine the key phrases said by Dong Woo Jang and Stephen Hawking, two separate presenters in TED Talks.
+The following packages are loaded in the first line of the code: dsEssex, tidyverse, tidytext, dplyr, ggplot2, ggrepel, and tidyr.
+The TED Talks dataset is loaded in the next section, which then uses the head() method to display a few rows.
+The dataset is cleaned up and tokenized in the third part using the unnest_tokens() method, which adds a new row to the dataset's text column for each distinct word. A new variable named tidy_talks is created as a result.
+
+The anti_join() function, which eliminates frequent words that don't add sense to a phrase, is used in the fourth section to remove stopwords. The result is saved in a new variable named Mydata.
+In the fifth and sixth parts, ggplot2 is used to make bar charts showing the top terms used by Dong Woo Jang and Stephen Hawking, respectively. Only the top 25 words are kept by the slice_max() method, and the modify() function reorders the words according to frequency counts.
+The seventh section creates a comparison plot between the two speakers using the bind_rows(), group_by(), filter(), ungroup(), and pivot_wider() functions to combine the top words dataframes and present them in a wide format. This plot includes a diagonal reference line and text labels for each word.
+Finally, the last section performs an odds ratio and sentiment analysis using the inner_join() function and the get_sentiments() function, respectively. It also creates a count of the number of occurrences of each sentiment for each speaker using the count() function and presents the data in a wide format using the pivot_wider() function.
+
+
+## Results
+                              LEVEL 1 - Summary and word counts
+
+```{r fig.width=3, fig.height=4}
+#word count of speaker Dong Woo Jang
+Jang_ggplot 
+```
+```{r fig.width=3, fig.height=4}
+#word count of speaker Stephen Hawking
+Hawking_ggplot
+```
+```{r fig.width=2, fig.height=2}
+#summary of both the speakers
+summary(Jang_words);summary(Hawking_words)
+```
+                   
+                          LEVEL 2 - Comparisons between the two speakers'
+```{r fig.width=3, fig.height=2}
+#comparing the common words used by the speakers
+Comparing
+```
+
+  
+
+      LEVEL 3 - Deeper comparisons between the two speakers, using numerical and visualize techniques
+  
+```{r fig.width=2, fig.height=1}
+#sentimental analysis of Dong Woo Jang
+Jang_analysis
+```
+```{r fig.width=2, fig.height=1}
+#sentimental analysis of Hawking Speaker
+Hawking_analysis
+```
+```{r fig.width=3, fig.height=3}
+#Analysis of positive and negative words
+senti_wider
+```
+```{r fig.width=4, fig.height=3}
+#sentimental analysis through visualization
+PN_Jang_Words
+```
+```{r fig.width=4, fig.height=3}
+#sentimental analysis through visualization
+PN_Hawking_words
+```
+
+     LEVEL 4 - Interpretations and explanations on the general findings and comparisons
+
+
+   The code in level 3 is performing sentimental analysis on two sets of data Dong Woo Jang and Stephen Hawking respectively. The code contains positive and Negative words which uses the "bing" lexicon for sentimental analysis.
+   The line illustrates the language they used, both positively and negatively.Dong Woo Jang, the first speaker, used far more positive terms than negative ones when describing how he transformed a stick of bamboo into an archer's bow.He frequently used positive words like "works well," "survival","ideal," "great," "effective," "better," etc. The other speaker, Stephen Hawking, who discusses the universe's beginnings, also used much more encouraging language, such as "thank you," "progress," "like," "good," and "survival," among other terms.
+    
+    
